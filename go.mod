@@ -15,9 +15,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.0.0
 	go.etcd.io/bbolt v1.3.5
-	go.etcd.io/etcd v0.5.0-alpha.5.0.20200707173218-d3a702a09d92
+	go.etcd.io/etcd v0.5.0-alpha.5.0.20210226220824-aa7126864d82
 	go.uber.org/zap v1.15.0
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
-	golang.org/x/text v0.3.3 // indirect
 	google.golang.org/grpc v1.29.1
 )

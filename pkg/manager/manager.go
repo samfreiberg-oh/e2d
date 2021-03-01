@@ -315,6 +315,8 @@ func (m *Manager) startOrJoinEtcdCluster() error {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
+	log.Infof("[%v]: waiting for peers to join cluster", shortName(m.cfg.Name))
+
 	for {
 		select {
 		case <-ticker.C:

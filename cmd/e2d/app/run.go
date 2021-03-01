@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"go.uber.org/zap/zapcore"
 	"strings"
 	"time"
 
@@ -61,6 +62,9 @@ func newRunCmd() *cobra.Command {
 		Use:   "run",
 		Short: "start a managed etcd instance",
 		Run: func(cmd *cobra.Command, args []string) {
+			if globalOptions.verbose {
+				log.SetLevel(zapcore.DebugLevel)
+			}
 			peerGetter, err := getPeerGetter(o)
 			if err != nil {
 				log.Fatalf("%+v", err)
