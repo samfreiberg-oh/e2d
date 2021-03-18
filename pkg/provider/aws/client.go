@@ -101,6 +101,10 @@ func (c *Client) GetAutoScalingGroupAddresses(ctx context.Context) ([]string, er
 }
 
 func (c *Client) GetAddressesByTag(ctx context.Context, kvs map[string]string) ([]string, error) {
+	doc, err := c.GetInstanceIdentityDocument()
+	if err != nil {
+		return nil, err
+	}
 	filters := make([]*ec2.Filter, 0)
 	for k, v := range kvs {
 		filters = append(filters, &ec2.Filter{
@@ -109,12 +113,15 @@ func (c *Client) GetAddressesByTag(ctx context.Context, kvs map[string]string) (
 		})
 	}
 	addrs := make([]string, 0)
-	err := c.EC2.DescribeInstancesPagesWithContext(ctx, &ec2.DescribeInstancesInput{
+	err = c.EC2.DescribeInstancesPagesWithContext(ctx, &ec2.DescribeInstancesInput{
 		Filters: filters,
 	}, func(page *ec2.DescribeInstancesOutput, lastPage bool) bool {
 		for _, reservations := range page.Reservations {
 			for _, instance := range reservations.Instances {
 				addr := instance.NetworkInterfaces[0].PrivateIpAddress
+				if *instance.InstanceId == doc.InstanceID {
+					continue
+				}
 				if !netutil.IsRoutableIPv4(*addr) {
 					continue
 				}
