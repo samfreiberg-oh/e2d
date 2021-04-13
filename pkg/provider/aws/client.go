@@ -106,6 +106,11 @@ func (c *Client) GetAddressesByTag(ctx context.Context, kvs map[string]string) (
 		return nil, err
 	}
 	filters := make([]*ec2.Filter, 0)
+	// filter out instances that are not running (terminated)
+	filters = append(filters, &ec2.Filter{
+		Name: aws.String("instance-state-name"),
+		Values: aws.StringSlice([]string{"running"}),
+	})
 	for k, v := range kvs {
 		filters = append(filters, &ec2.Filter{
 			Name:   aws.String(fmt.Sprintf("tag:%s", k)),
