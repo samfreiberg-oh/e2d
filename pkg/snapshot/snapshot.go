@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"encoding/json"
 	"io"
 	"net/url"
 	"path/filepath"
@@ -35,8 +36,10 @@ type Type int
 const (
 	FileType Type = iota
 	S3Type
-	SpacesType
 )
+
+const snapshotFilename = "etcd.snapshot"
+const latestSuffix = "LATEST"
 
 type URL struct {
 	Type   Type
@@ -46,14 +49,28 @@ type URL struct {
 
 var (
 	ErrInvalidScheme  = errors.New("invalid scheme")
+	ErrInvalidDirectoryPath = errors.New("path must be a directory")
 	ErrCannotParseURL = errors.New("cannot parse url")
 )
+
+type LatestFile struct {
+	Path	string
+	Timestamp string
+}
+
+func (l *LatestFile) generate() ([]byte, error) {
+	content, err := json.Marshal(&l)
+	return content, err
+}
+
+func (l *LatestFile) read(input []byte) error {
+	return json.Unmarshal(input, l)
+}
 
 // ParseSnapshotBackupURL deconstructs a uri into a type prefix and a bucket
 // example inputs and outputs:
 //   file://file                                -> file://, file
 //   s3://bucket                                -> s3://, bucket
-//   https://nyc3.digitaloceanspaces.com/bucket -> digitaloceanspaces, bucket
 func ParseSnapshotBackupURL(s string) (*URL, error) {
 	if !hasValidScheme(s) {
 		return nil, errors.Wrapf(ErrInvalidScheme, "url does not specify valid scheme: %#v", s)
@@ -65,40 +82,23 @@ func ParseSnapshotBackupURL(s string) (*URL, error) {
 
 	switch strings.ToLower(u.Scheme) {
 	case "file":
+		if !strings.HasSuffix(u.Path, string(filepath.Separator)) {
+			return nil, ErrInvalidDirectoryPath
+		}
 		return &URL{
 			Type: FileType,
 			Path: filepath.Join(u.Host, u.Path),
 		}, nil
 	case "s3":
-		if u.Path == "" {
-			u.Path = "etcd.snapshot"
+		path := strings.TrimPrefix(u.Path, "/")
+		if !strings.HasSuffix(path, "/") && path != "" {
+			return nil, ErrInvalidDirectoryPath
 		}
 		return &URL{
 			Type:   S3Type,
 			Bucket: u.Host,
-			Path:   strings.TrimPrefix(u.Path, "/"),
+			Path:   path,
 		}, nil
-	case "http", "https":
-		if strings.Contains(u.Host, "digitaloceanspaces") {
-			bucket, path := parseBucketKey(strings.TrimPrefix(u.Path, "/"))
-			return &URL{
-				Type:   SpacesType,
-				Bucket: bucket,
-				Path:   path,
-			}, nil
-		}
 	}
 	return nil, errors.Wrap(ErrCannotParseURL, s)
-}
-
-func parseBucketKey(s string) (string, string) {
-	parts := strings.SplitN(s, "/", 2)
-	switch len(parts) {
-	case 1:
-		return parts[0], "etcd.snapshot"
-	case 2:
-		return parts[0], parts[1]
-	default:
-		return "", ""
-	}
 }

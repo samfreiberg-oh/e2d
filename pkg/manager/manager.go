@@ -189,7 +189,7 @@ func (m *Manager) restoreFromSnapshot(peers []*Peer) (bool, error) {
 // cluster, by conveying information about whether this is a brand new cluster
 // or an existing cluster that recovered from total cluster failure.
 func (m *Manager) startEtcdCluster(peers []*Peer) error {
-	snapshot, err := m.restoreFromSnapshot(peers)
+	restored, err := m.restoreFromSnapshot(peers)
 	if err != nil {
 		log.Error("cannot restore snapshot", zap.Error(err))
 	}
@@ -199,7 +199,7 @@ func (m *Manager) startEtcdCluster(peers []*Peer) error {
 	if err := m.etcd.startNew(ctx, peers); err != nil {
 		return err
 	}
-	if !snapshot {
+	if !restored {
 		return nil
 	}
 
@@ -449,6 +449,7 @@ func (m *Manager) runSnapshotter() {
 		log.Info("snapshotting disabled: no snapshot backup set")
 		return
 	}
+
 	log.Debug("starting snapshotter")
 	ticker := time.NewTicker(m.cfg.SnapshotInterval)
 	defer ticker.Stop()
@@ -459,7 +460,7 @@ func (m *Manager) runSnapshotter() {
 		select {
 		case <-ticker.C:
 			if m.etcd.isRestarting() {
-				log.Debug("server is restarting, skipping snapshot backup")
+				log.Warn("server is restarting, skipping snapshot backup")
 				continue
 			}
 			if !m.etcd.isLeader() {
@@ -469,7 +470,7 @@ func (m *Manager) runSnapshotter() {
 			log.Debug("starting snapshot backup")
 			snapshotData, snapshotSize, rev, err := m.etcd.createSnapshot(latestRev)
 			if err != nil {
-				log.Debug("cannot create snapshot",
+				log.Info("skipping snapshot, etcd revision hasn't changed since last snapshot",
 					zap.String("name", shortName(m.cfg.Name)),
 					zap.Error(err),
 				)
@@ -482,7 +483,7 @@ func (m *Manager) runSnapshotter() {
 				snapshotData = snapshotutil.NewGzipReadCloser(snapshotData)
 			}
 			if err := m.snapshotter.Save(snapshotData); err != nil {
-				log.Debug("cannot save snapshot",
+				log.Error("cannot save snapshot",
 					zap.String("name", shortName(m.cfg.Name)),
 					zap.Error(err),
 				)
@@ -509,9 +510,28 @@ func (m *Manager) Run() error {
 	case 1:
 		// a single-node etcd cluster does not require gossip or need to wait for
 		// other members and therefore can start immediately
-		if err := m.startEtcdCluster([]*Peer{{m.cfg.Name, m.cfg.PeerURL.String()}}); err != nil {
-			return err
+		peers := []*Peer{{m.cfg.Name, m.cfg.PeerURL.String()}}
+		if _, err := os.Lstat(m.cfg.Dir); err == nil {
+			// we have a data directory, attempt to use that
+			ctx, cancel := context.WithTimeout(m.ctx, 5*time.Minute)
+			defer cancel()
+			// try to use the on-disk data, and if it fails, fall back to restoring / creating new cluster
+			if err := m.etcd.joinExisting(ctx, peers); err != nil {
+				log.Error("unable to start from the on-disk etcd data, attempting to restore from snapshot or create new cluster", zap.Error(err))
+				if err := m.startEtcdCluster(peers); err != nil {
+					log.Error("unable to restore from backup and unable to create a new cluster", zap.Error(err))
+					return err
+				}
+			}
+		} else {
+			// we might be either a brand new cluster of size one, or one that was recently started
+			// after a node failure. try restoring from snapshot to recover, or create a new blank cluster instead.
+			if err := m.startEtcdCluster(peers); err != nil {
+				log.Error("no data directory exists, and unable to start new cluster or restore from backup", zap.Error(err))
+				return err
+			}
 		}
+
 	case 3, 5:
 		// all multi-node clusters require the gossip network to be started
 		if err := m.gossip.Start(m.ctx, m.cfg.BootstrapAddrs); err != nil {

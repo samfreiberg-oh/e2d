@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"go.uber.org/zap/zapcore"
+	"math"
 	"strings"
 	"time"
 
@@ -41,10 +42,11 @@ type runOptions struct {
 
 	PeerDiscovery string `env:"E2D_PEER_DISCOVERY"`
 
-	SnapshotBackupURL   string        `env:"E2D_SNAPSHOT_BACKUP_URL"`
-	SnapshotCompression bool          `env:"E2D_SNAPSHOT_COMPRESSION"`
-	SnapshotEncryption  bool          `env:"E2D_SNAPSHOT_ENCRYPTION"`
-	SnapshotInterval    time.Duration `env:"E2D_SNAPSHOT_INTERVAL"`
+	SnapshotBackupURL     string        `env:"E2D_SNAPSHOT_BACKUP_URL"`
+	SnapshotCompression   bool          `env:"E2D_SNAPSHOT_COMPRESSION"`
+	SnapshotEncryption    bool          `env:"E2D_SNAPSHOT_ENCRYPTION"`
+	SnapshotInterval      time.Duration `env:"E2D_SNAPSHOT_INTERVAL"`
+	SnapshotRetentionTime time.Duration `env:"E2D_SNAPSHOT_RETENTION_TIME"`
 
 	AWSAccessKey       string `env:"E2D_AWS_ACCESS_KEY"`
 	AWSSecretKey       string `env:"E2D_AWS_SECRET_KEY"`
@@ -67,17 +69,17 @@ func newRunCmd() *cobra.Command {
 			}
 			peerGetter, err := getPeerGetter(o)
 			if err != nil {
-				log.Fatalf("%+v", err)
+				log.Fatal("unable to get peer getter", zap.Error(err))
 			}
 
 			baddrs, err := getInitialBootstrapAddrs(o, peerGetter)
 			if err != nil {
-				log.Fatalf("%+v", err)
+				log.Fatal("unable to get initial bootstrap addresses", zap.Error(err))
 			}
 
 			snapshotter, err := getSnapshotProvider(o)
 			if err != nil {
-				log.Fatalf("%+v", err)
+				log.Fatal("unable to set up snapshot provider", zap.Error(err))
 			}
 
 			m, err := manager.New(&manager.Config{
@@ -141,10 +143,11 @@ func newRunCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&o.PeerDiscovery, "peer-discovery", "", "which method {aws-autoscaling-group,ec2-tags,do-tags} to use to discover peers")
 
-	cmd.Flags().DurationVar(&o.SnapshotInterval, "snapshot-interval", 1*time.Minute, "frequency of etcd snapshots")
-	cmd.Flags().StringVar(&o.SnapshotBackupURL, "snapshot-backup-url", "", "an absolute path to shared filesystem storage (like file:///etcd-backups) or cloud storage bucket (like s3://etcd-backups) for snapshot backups")
+	cmd.Flags().DurationVar(&o.SnapshotInterval, "snapshot-interval", 25*time.Minute, "frequency of etcd snapshots")
+	cmd.Flags().StringVar(&o.SnapshotBackupURL, "snapshot-url", "", "an absolute path to shared filesystem directory (like file:///tmp/etcd-backups/) or cloud storage bucket (like s3://etcd-backups/mycluster/) for snapshot backups. snapshots will be named etcd.snapshot.<timestamp>, and a file etcd.snapshot.LATEST will point to the most recent snapshot.")
 	cmd.Flags().BoolVar(&o.SnapshotCompression, "snapshot-compression", false, "compression snapshots with gzip")
 	cmd.Flags().BoolVar(&o.SnapshotEncryption, "snapshot-encryption", false, "encrypt snapshots with aes-256")
+	cmd.Flags().DurationVar(&o.SnapshotRetentionTime, "snapshot-retention-time", 24*time.Hour, "maximum age of a snapshot before it is deleted, set this to nonzero to enable retention support")
 
 	cmd.Flags().StringVar(&o.AWSAccessKey, "aws-access-key", "", "")
 	cmd.Flags().StringVar(&o.AWSSecretKey, "aws-secret-key", "", "")
@@ -238,18 +241,21 @@ func getSnapshotProvider(o *runOptions) (snapshot.Snapshotter, error) {
 
 	switch u.Type {
 	case snapshot.FileType:
-		return snapshot.NewFileSnapshotter(u.Path)
+		return snapshot.NewFileSnapshotter(u.Path, o.SnapshotRetentionTime)
 	case snapshot.S3Type:
+		origSnapshotRetentionDays := o.SnapshotRetentionTime.Hours() / 24
+		snapshotRetentionDays := int64(math.Ceil(origSnapshotRetentionDays))
+		if int64(origSnapshotRetentionDays) != snapshotRetentionDays {
+			log.Warn("S3 retention time rounded to the nearest day",
+				zap.Float64("original-days", origSnapshotRetentionDays),
+				zap.Int64("new-days", snapshotRetentionDays),
+			)
+		}
 		return snapshot.NewAmazonSnapshotter(&snapshot.AmazonConfig{
 			RoleSessionName: o.AWSRoleSessionName,
 			Bucket:          u.Bucket,
 			Key:             u.Path,
-		})
-	case snapshot.SpacesType:
-		return snapshot.NewDigitalOceanSnapshotter(&snapshot.DigitalOceanConfig{
-			SpacesURL:       o.SnapshotBackupURL,
-			SpacesAccessKey: o.DOSpacesKey,
-			SpacesSecretKey: o.DOSpacesSecret,
+			RetentionDays:   snapshotRetentionDays,
 		})
 	default:
 		return nil, errors.Errorf("unsupported snapshot url format: %#v", o.SnapshotBackupURL)
