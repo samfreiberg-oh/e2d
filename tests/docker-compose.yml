@@ -1,0 +1,67 @@
+version: "3.9"
+services:
+  builder:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    volumes:
+      - e2d:/mnt
+      - ./test.sh:/usr/local/bin/test.sh:ro
+    entrypoint: sh
+    command: -c 'mkdir -p /mnt/bin && cp /e2d /mnt/bin/e2d'
+  e2d0:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: e2d-tester:local
+    hostname: e2d0
+    depends_on:
+      - builder
+    volumes:
+      - e2d:/mnt
+    entrypoint: bash
+    command: test.sh -p member
+  e2d1:
+    depends_on:
+      - e2d0
+    image: e2d-tester:local
+    hostname: e2d1
+    volumes:
+      - e2d:/mnt
+    entrypoint: bash
+    command: test.sh -p member
+    links:
+      - e2d0
+      - e2d2
+  e2d2:
+    depends_on:
+      - e2d0
+    image: e2d-tester:local
+    hostname: e2d2
+    volumes:
+      - e2d:/mnt
+    entrypoint: bash
+    command: test.sh -p member
+    links:
+      - e2d0
+  tester:
+    depends_on:
+      - e2d0
+      - e2d1
+      - e2d2
+    image: e2d-tester:local
+    hostname: tester
+    volumes:
+      - e2d:/mnt
+    entrypoint: bash
+    command: test.sh -p tester
+    links:
+      - e2d0
+      - e2d1
+      - e2d2
+volumes:
+   e2d:
+networks:
+  default:
+    name: e2d
+    driver: bridge

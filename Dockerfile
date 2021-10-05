@@ -32,18 +32,9 @@ RUN chown nobody:nobody bin/e2d
 
 ############################
 # Final stage: Just the executable and bare minimum other files
-FROM scratch AS final
+FROM alpine:3.14.2 AS final
 
-LABEL MAINTAINER="Critical Stack <dev@criticalstack.com>"
-
-# Import the user and group files from the first stage.
-COPY --from=go-builder /user/group /user/passwd /etc/
-
-# Import the Certificate-Authority certificates for enabling HTTPS.
-COPY --from=go-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-
-# Perform any further action as an unprivileged user.
-USER nobody:nobody
+LABEL MAINTAINER="NXTLytics <dev@nxtlytics.com>"
 
 # e2d runs on port 2379,2380,7980
 EXPOSE 2379
@@ -51,6 +42,6 @@ EXPOSE 2380
 EXPOSE 7980
 
 # Add e2d bin
-COPY --from=go-builder --chown=nobody:nobody /e2d/bin/e2d /
+COPY --from=go-builder /e2d/bin/e2d /
 
 ENTRYPOINT ["/e2d"]
