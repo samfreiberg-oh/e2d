@@ -101,7 +101,12 @@ function is_e2d_ready() {
 function create_etcd_ca() {
   is_e2d_ready
   mkdir -p "${CA_DIR}" "${SNAP_DIR}"
-  "${E2D_BIN}" pki init --ca-key "${CA_KEY}" --ca-cert "${CA_CRT}"
+  if [[ ! -e "${CA_KEY}" ]]; then
+    echo "${CA_KEY} does not exist, I will create it now"
+    "${E2D_BIN}" pki init --ca-key "${CA_KEY}" --ca-cert "${CA_CRT}"
+  else
+    echo "${CA_KEY} already exists"
+  fi
   chown -R ${TEST_USERNAME}: "${SHARED_VOLUME_PATH}/"
 }
 
