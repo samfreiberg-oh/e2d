@@ -15,6 +15,7 @@ services:
       dockerfile: Dockerfile
     image: e2d-tester:local
     hostname: e2d0
+    restart: always
     depends_on:
       - builder
     volumes:
@@ -26,6 +27,7 @@ services:
       - e2d0
     image: e2d-tester:local
     hostname: e2d1
+    restart: always
     volumes:
       - e2d:/mnt
     entrypoint: bash
@@ -38,6 +40,7 @@ services:
       - e2d0
     image: e2d-tester:local
     hostname: e2d2
+    restart: always
     volumes:
       - e2d:/mnt
     entrypoint: bash
@@ -51,6 +54,7 @@ services:
       - e2d2
     image: e2d-tester:local
     hostname: tester
+    restart: always
     volumes:
       - e2d:/mnt
     entrypoint: bash
