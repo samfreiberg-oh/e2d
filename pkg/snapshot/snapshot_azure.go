@@ -1,0 +1,135 @@
+package snapshot
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"time"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+)
+
+// azContainerName is the top level namespace where we'll keep snapshots
+const azContainerName = "oh-az-eastus-app-prod"
+
+type AzureSnapshotter struct {
+	container azblob.ContainerClient
+}
+
+type AzureConfig struct {
+	AccountName    string
+	AccountKey     string
+	StorageAccount string
+}
+
+func newAzureSnapshotter(config *AzureConfig) (Snapshotter, error) {
+	cred, err := azblob.NewSharedKeyCredential(config.AccountName, config.AccountKey)
+	if err != nil {
+		return nil, err
+	}
+
+	url := fmt.Sprintf("https://%s.blob.core.windows.net/", config.StorageAccount)
+
+	client, err := azblob.NewServiceClientWithSharedKey(url, cred, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	container := client.NewContainerClient(azContainerName)
+	return &AzureSnapshotter{container: container}, nil
+}
+
+func (s *AzureSnapshotter) Load() (io.ReadCloser, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
+
+	// get latest
+	client := s.container.NewBlobClient(s.latestPath())
+	resp, err := client.Download(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	latest := &LatestFile{}
+	body := resp.Body(azblob.RetryReaderOptions{MaxRetryRequests: 5})
+	decoder := json.NewDecoder(body)
+	if err := decoder.Decode(latest); err != nil {
+		return nil, err
+	}
+
+	client = s.container.NewBlobClient(latest.Path)
+	resp, err = client.Download(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	body = resp.Body(azblob.RetryReaderOptions{MaxRetryRequests: 5})
+	return body, nil
+}
+
+func (s *AzureSnapshotter) Save(r io.ReadCloser) error {
+	defer r.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
+
+	// generate the filenames
+	backedupAt := time.Now()
+	snapshotPath := s.snapshotPath(backedupAt)
+
+	fmt.Printf("Snapshot path: %s\n", snapshotPath)
+
+	// Write snapshot
+	tmp, err := os.CreateTemp("", snapshotPath)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+
+	if _, err := io.Copy(tmp, r); err != nil {
+		return err
+	}
+
+	if _, err := s.uploadFile(ctx, snapshotPath, tmp); err != nil {
+		return err
+	}
+
+	_, err = s.updateLatest(ctx, snapshotPath, backedupAt)
+	return err
+}
+
+func (s *AzureSnapshotter) uploadFile(ctx context.Context, path string, file *os.File) (*http.Response, error) {
+	opts := azblob.HighLevelUploadToBlockBlobOption{}
+	client := s.container.NewBlockBlobClient(path)
+	return client.UploadFileToBlockBlob(ctx, file, opts)
+}
+
+func (s *AzureSnapshotter) uploadBytes(ctx context.Context, path string, p []byte) (*http.Response, error) {
+	opts := azblob.HighLevelUploadToBlockBlobOption{}
+	client := s.container.NewBlockBlobClient(path)
+	return client.UploadBufferToBlockBlob(ctx, p, opts)
+}
+
+func (s *AzureSnapshotter) updateLatest(ctx context.Context, path string, backedupAt time.Time) (*http.Response, error) {
+	latest := &LatestFile{
+		Path:      path,
+		Timestamp: backedupAt.Format("2006-01-02T15:04:05-0700"),
+	}
+	fmt.Printf("Snapshot path #2: %s\n", path)
+	out, err := latest.generate()
+	if err != nil {
+		return nil, err
+	}
+
+	return s.uploadBytes(ctx, s.latestPath(), out)
+}
+
+func (s *AzureSnapshotter) latestPath() string {
+	return fmt.Sprintf("%s.%s", snapshotFilename, latestSuffix)
+}
+
+func (s *AzureSnapshotter) snapshotPath(backedupAt time.Time) string {
+	return fmt.Sprintf("%s.%d", snapshotFilename, backedupAt.Unix())
+}

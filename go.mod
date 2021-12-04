@@ -3,6 +3,7 @@ module github.com/criticalstack/e2d
 go 1.14
 
 require (
+	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v0.2.0
 	github.com/aws/aws-sdk-go v1.30.7
 	github.com/cloudflare/cfssl v1.4.1
 	github.com/coreos/go-semver v0.3.0 // indirect
