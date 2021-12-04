@@ -1,3 +1,4 @@
+// TODO: Check if container exists and if not try to create it
 package snapshot
 
 import (
@@ -12,17 +13,22 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 )
 
-// azContainerName is the top level namespace where we'll keep snapshots
-const azContainerName = "oh-az-eastus-app-prod"
-
 type AzureSnapshotter struct {
 	container azblob.ContainerClient
 }
 
 type AzureConfig struct {
-	AccountName    string
-	AccountKey     string
+	// AccountName is the Azure account name.
+	AccountName string
+
+	// AccountKey is the secret to access the storage account.
+	AccountKey string
+
+	// StorageAccount is the storage account name.
 	StorageAccount string
+
+	// ContainerName is the top level namespace where we'll keep snapshots
+	ContainerName string
 }
 
 func newAzureSnapshotter(config *AzureConfig) (Snapshotter, error) {
@@ -38,7 +44,7 @@ func newAzureSnapshotter(config *AzureConfig) (Snapshotter, error) {
 		return nil, err
 	}
 
-	container := client.NewContainerClient(azContainerName)
+	container := client.NewContainerClient(config.ContainerName)
 	return &AzureSnapshotter{container: container}, nil
 }
 
