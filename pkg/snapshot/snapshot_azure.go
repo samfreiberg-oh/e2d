@@ -31,7 +31,7 @@ type AzureConfig struct {
 	ContainerName string
 }
 
-func newAzureSnapshotter(config *AzureConfig) (Snapshotter, error) {
+func NewAzureSnapshotter(config *AzureConfig) (Snapshotter, error) {
 	cred, err := azblob.NewSharedKeyCredential(config.AccountName, config.AccountKey)
 	if err != nil {
 		return nil, err

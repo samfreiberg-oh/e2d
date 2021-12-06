@@ -36,6 +36,7 @@ type Type int
 const (
 	FileType Type = iota
 	S3Type
+	AzureType
 )
 
 const snapshotFilename = "etcd.snapshot"
@@ -48,13 +49,13 @@ type URL struct {
 }
 
 var (
-	ErrInvalidScheme  = errors.New("invalid scheme")
+	ErrInvalidScheme        = errors.New("invalid scheme")
 	ErrInvalidDirectoryPath = errors.New("path must be a directory")
-	ErrCannotParseURL = errors.New("cannot parse url")
+	ErrCannotParseURL       = errors.New("cannot parse url")
 )
 
 type LatestFile struct {
-	Path	string
+	Path      string
 	Timestamp string
 }
 
@@ -71,6 +72,7 @@ func (l *LatestFile) read(input []byte) error {
 // example inputs and outputs:
 //   file://file                                -> file://, file
 //   s3://bucket                                -> s3://, bucket
+//   azure://container							-> azure://, container_name
 func ParseSnapshotBackupURL(s string) (*URL, error) {
 	if !hasValidScheme(s) {
 		return nil, errors.Wrapf(ErrInvalidScheme, "url does not specify valid scheme: %#v", s)
@@ -98,6 +100,11 @@ func ParseSnapshotBackupURL(s string) (*URL, error) {
 			Type:   S3Type,
 			Bucket: u.Host,
 			Path:   path,
+		}, nil
+	case "azure":
+		return &URL{
+			Type:   AzureType,
+			Bucket: u.Host,
 		}, nil
 	}
 	return nil, errors.Wrap(ErrCannotParseURL, s)

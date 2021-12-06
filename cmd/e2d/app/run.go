@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"go.uber.org/zap/zapcore"
 	"math"
 	"strings"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type runOptions struct {
@@ -51,6 +51,10 @@ type runOptions struct {
 	AWSAccessKey       string `env:"E2D_AWS_ACCESS_KEY"`
 	AWSSecretKey       string `env:"E2D_AWS_SECRET_KEY"`
 	AWSRoleSessionName string `env:"E2D_AWS_ROLE_SESSION_NAME"`
+
+	AzureAccountName    string `env:"E2D_AZURE_ACCOUNT_NAME"`
+	AzureAccountKey     string `env:"E2D_AZURE_ACCOUNT_KEY"`
+	AzureStorageAccount string `env:"E2D_AZURE_STORAGE_ACCOUNT"`
 
 	DOAccessToken  string `env:"E2D_DO_ACCESS_TOKEN"`
 	DOSpacesKey    string `env:"E2D_DO_SPACES_KEY"`
@@ -152,6 +156,10 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.AWSAccessKey, "aws-access-key", "", "")
 	cmd.Flags().StringVar(&o.AWSSecretKey, "aws-secret-key", "", "")
 	cmd.Flags().StringVar(&o.AWSRoleSessionName, "aws-role-session-name", "", "")
+
+	cmd.Flags().StringVar(&o.AzureAccountName, "azure-account-name", "", "")
+	cmd.Flags().StringVar(&o.AzureAccountKey, "azure-account-key", "", "")
+	cmd.Flags().StringVar(&o.AzureStorageAccount, "azure-storage-account", "", "")
 
 	cmd.Flags().StringVar(&o.DOAccessToken, "do-access-token", "", "DigitalOcean personal access token")
 	cmd.Flags().StringVar(&o.DOSpacesKey, "do-spaces-key", "", "DigitalOcean spaces access key")
@@ -257,6 +265,14 @@ func getSnapshotProvider(o *runOptions) (snapshot.Snapshotter, error) {
 			Key:             u.Path,
 			RetentionDays:   snapshotRetentionDays,
 		})
+	case snapshot.AzureType:
+		config := &snapshot.AzureConfig{
+			AccountName:    o.AzureAccountName,
+			AccountKey:     o.AzureAccountName,
+			StorageAccount: o.AzureStorageAccount,
+			ContainerName:  u.Bucket,
+		}
+		return snapshot.NewAzureSnapshotter(config)
 	default:
 		return nil, errors.Errorf("unsupported snapshot url format: %#v", o.SnapshotBackupURL)
 	}
