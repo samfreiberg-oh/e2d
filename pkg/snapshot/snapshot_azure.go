@@ -89,8 +89,6 @@ func (s *azureSnapshotter) Save(r io.ReadCloser) error {
 	backedupAt := time.Now()
 	snapshotPath := s.snapshotPath(backedupAt)
 
-	fmt.Printf("Snapshot path: %s\n", snapshotPath)
-
 	// Write snapshot
 	tmp, err := os.CreateTemp("", snapshotPath)
 	if err != nil {
@@ -127,7 +125,6 @@ func (s *azureSnapshotter) updateLatest(ctx context.Context, path string, backed
 		Path:      path,
 		Timestamp: backedupAt.Format("2006-01-02T15:04:05-0700"),
 	}
-	fmt.Printf("Snapshot path #2: %s\n", path)
 	out, err := latest.generate()
 	if err != nil {
 		return nil, err
