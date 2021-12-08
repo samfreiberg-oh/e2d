@@ -18,6 +18,7 @@ type Snapshotter interface {
 var schemes = []string{
 	"file://",
 	"s3://",
+	"azure://",
 	"http://",
 	"https://",
 }
