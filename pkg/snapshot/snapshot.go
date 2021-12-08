@@ -72,7 +72,7 @@ func (l *LatestFile) read(input []byte) error {
 // example inputs and outputs:
 //   file://file                                -> file://, file
 //   s3://bucket                                -> s3://, bucket
-//   azure://container							-> azure://, container_name
+//   azure://container                          -> azure://, container_name
 func ParseSnapshotBackupURL(s string) (*URL, error) {
 	if !hasValidScheme(s) {
 		return nil, errors.Wrapf(ErrInvalidScheme, "url does not specify valid scheme: %#v", s)
