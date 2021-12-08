@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+// TestSnapshot is an end to end test that does the following:
+//   1. Uploads a "backup" including the pointer file that points to this as the latest.
+//   2. Download the "backup" and compare it to what was written. This also reads the latest file to get the latest file.
 func TestSnapshot(t *testing.T) {
 	have := time.Now().Format(time.RFC3339Nano)
 	want := have
@@ -42,12 +45,9 @@ func TestSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error loading data: %s\n", err)
 	}
-	got, err := ioutil.ReadAll(reader)
-	if err != nil {
-		t.Fatalf("Error reading all of the data: %s\n", err)
-	}
 
-	if want != string(got) {
+	got, err := ioutil.ReadAll(reader)
+	if err != nil || want != string(got) {
 		t.Fatalf("Snapshotter.Load() = %v, %v; wanted %v, <nil>\n", string(got), err, want)
 	}
 }
