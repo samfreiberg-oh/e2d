@@ -59,6 +59,22 @@ func (s *azureSnapshotter) Load() (io.ReadCloser, error) {
 	defer cancel()
 
 	// get latest
+	latest, err := s.getLatestSnapshotInfo(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	client := s.container.NewBlobClient(latest.Path)
+	resp, err := client.Download(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	body := resp.Body(azblob.RetryReaderOptions{MaxRetryRequests: 5})
+	return body, nil
+}
+
+func (s *azureSnapshotter) getLatestSnapshotInfo(ctx context.Context) (*LatestFile, error) {
 	client := s.container.NewBlobClient(s.latestPath())
 	resp, err := client.Download(ctx, nil)
 	if err != nil {
@@ -67,19 +83,12 @@ func (s *azureSnapshotter) Load() (io.ReadCloser, error) {
 
 	latest := &LatestFile{}
 	body := resp.Body(azblob.RetryReaderOptions{MaxRetryRequests: 5})
-	decoder := json.NewDecoder(body)
-	if err := decoder.Decode(latest); err != nil {
+	defer body.Close()
+
+	if err := json.NewDecoder(body).Decode(latest); err != nil {
 		return nil, err
 	}
-
-	client = s.container.NewBlobClient(latest.Path)
-	resp, err = client.Download(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	body = resp.Body(azblob.RetryReaderOptions{MaxRetryRequests: 5})
-	return body, nil
+	return latest, nil
 }
 
 func (s *azureSnapshotter) Save(r io.ReadCloser) error {
