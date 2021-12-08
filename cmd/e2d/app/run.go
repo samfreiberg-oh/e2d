@@ -56,6 +56,7 @@ type runOptions struct {
 	AzureAccountKey     string        `env:"E2D_AZURE_ACCOUNT_KEY"`
 	AzureStorageAccount string        `env:"E2D_AZURE_STORAGE_ACCOUNT"`
 	AzureStorageTimeout time.Duration `env:"E2D_AZURE_STORAGE_TIMEOUT"`
+	AzureStorageRetries int           `env:"E2D_AZURE_STORAGE_RETRIES"`
 
 	DOAccessToken  string `env:"E2D_DO_ACCESS_TOKEN"`
 	DOSpacesKey    string `env:"E2D_DO_SPACES_KEY"`
@@ -162,6 +163,7 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.AzureAccountKey, "azure-account-key", "", "")
 	cmd.Flags().StringVar(&o.AzureStorageAccount, "azure-storage-account", "", "")
 	cmd.Flags().DurationVar(&o.AzureStorageTimeout, "azure-storage-timeout", 5*time.Minute, "")
+	cmd.Flags().IntVar(&o.AzureStorageRetries, "azure-storage-timeout", 3, "maximum number of times to retry upload/download from Azure storage")
 
 	cmd.Flags().StringVar(&o.DOAccessToken, "do-access-token", "", "DigitalOcean personal access token")
 	cmd.Flags().StringVar(&o.DOSpacesKey, "do-spaces-key", "", "DigitalOcean spaces access key")
@@ -274,6 +276,7 @@ func getSnapshotProvider(o *runOptions) (snapshot.Snapshotter, error) {
 			StorageAccount: o.AzureStorageAccount,
 			ContainerName:  u.Bucket,
 			Timeout:        o.AzureStorageTimeout,
+			Retries:        o.AzureStorageRetries,
 		}
 		return snapshot.NewAzureSnapshotter(config)
 	default:

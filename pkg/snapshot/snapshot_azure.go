@@ -36,6 +36,9 @@ type AzureConfig struct {
 	// Timeout controls how long we wait for Snapshotter.Save or Snapshotter.Load
 	// to finish.
 	Timeout time.Duration
+
+	// Maximum number of times to retry an upload or download.
+	Retries int
 }
 
 // NewAzureSnapshotter takes a pointer to AzureConfig and returns a type that
@@ -76,8 +79,12 @@ func (s *azureSnapshotter) Load() (io.ReadCloser, error) {
 		return nil, err
 	}
 
-	body := resp.Body(azblob.RetryReaderOptions{MaxRetryRequests: 5})
+	body := resp.Body(s.azReaderOptions())
 	return body, nil
+}
+
+func (s *azureSnapshotter) azReaderOptions() azblob.RetryReaderOptions {
+	return azblob.RetryReaderOptions{MaxRetryRequests: s.config.Retries}
 }
 
 func (s *azureSnapshotter) getLatestSnapshotInfo(ctx context.Context) (*LatestFile, error) {
@@ -88,7 +95,7 @@ func (s *azureSnapshotter) getLatestSnapshotInfo(ctx context.Context) (*LatestFi
 	}
 
 	latest := &LatestFile{}
-	body := resp.Body(azblob.RetryReaderOptions{MaxRetryRequests: 5})
+	body := resp.Body(s.azReaderOptions())
 	defer body.Close()
 
 	if err := json.NewDecoder(body).Decode(latest); err != nil {
