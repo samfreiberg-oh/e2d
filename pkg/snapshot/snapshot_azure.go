@@ -29,7 +29,7 @@ type AzureConfig struct {
 	// StorageAccount is the storage account name.
 	StorageAccount string
 
-	// ContainerName is the top level namespace where we'll keep snapshots
+	// ContainerName is the top level namespace where we'll keep snapshots.
 	ContainerName string
 
 	// Timeout controls how long we wait for Snapshotter.Save or Snapshotter.Load
