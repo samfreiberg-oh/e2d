@@ -1,4 +1,3 @@
-// TODO: Check if container exists and if not try to create it
 package snapshot
 
 import (
