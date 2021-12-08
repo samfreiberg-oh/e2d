@@ -14,6 +14,7 @@ import (
 )
 
 type azureSnapshotter struct {
+	config    *AzureConfig
 	container azblob.ContainerClient
 }
 
@@ -31,6 +32,10 @@ type AzureConfig struct {
 
 	// ContainerName is the top level namespace where we'll keep snapshots
 	ContainerName string
+
+	// Timeout controls how long we wait for Snapshotter.Save or Snapshotter.Load
+	// to finish.
+	Timeout time.Duration
 }
 
 // NewAzureSnapshotter takes a pointer to AzureConfig and returns a type that
@@ -49,13 +54,14 @@ func NewAzureSnapshotter(config *AzureConfig) (Snapshotter, error) {
 	}
 
 	snapshotter := &azureSnapshotter{
+		config:    config,
 		container: client.NewContainerClient(config.ContainerName),
 	}
 	return snapshotter, nil
 }
 
 func (s *azureSnapshotter) Load() (io.ReadCloser, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), s.getTimeout())
 	defer cancel()
 
 	// get latest
@@ -93,7 +99,7 @@ func (s *azureSnapshotter) getLatestSnapshotInfo(ctx context.Context) (*LatestFi
 
 func (s *azureSnapshotter) Save(r io.ReadCloser) error {
 	defer r.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), s.getTimeout())
 	defer cancel()
 
 	// generate the filenames
@@ -150,4 +156,11 @@ func (s *azureSnapshotter) latestPath() string {
 
 func (s *azureSnapshotter) snapshotPath(backedupAt time.Time) string {
 	return fmt.Sprintf("%s.%d", snapshotFilename, backedupAt.Unix())
+}
+
+func (s *azureSnapshotter) getTimeout() time.Duration {
+	if s.config.Timeout != 0 {
+		return s.config.Timeout
+	}
+	return time.Duration(time.Minute)
 }
