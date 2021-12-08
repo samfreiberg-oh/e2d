@@ -48,8 +48,10 @@ func NewAzureSnapshotter(config *AzureConfig) (Snapshotter, error) {
 		return nil, err
 	}
 
-	container := client.NewContainerClient(config.ContainerName)
-	return &azureSnapshotter{container: container}, nil
+	snapshotter := &azureSnapshotter{
+		container: client.NewContainerClient(config.ContainerName),
+	}
+	return snapshotter, nil
 }
 
 func (s *azureSnapshotter) Load() (io.ReadCloser, error) {
