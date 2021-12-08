@@ -13,7 +13,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 )
 
-type AzureSnapshotter struct {
+type azureSnapshotter struct {
 	container azblob.ContainerClient
 }
 
@@ -45,10 +45,10 @@ func NewAzureSnapshotter(config *AzureConfig) (Snapshotter, error) {
 	}
 
 	container := client.NewContainerClient(config.ContainerName)
-	return &AzureSnapshotter{container: container}, nil
+	return &azureSnapshotter{container: container}, nil
 }
 
-func (s *AzureSnapshotter) Load() (io.ReadCloser, error) {
+func (s *azureSnapshotter) Load() (io.ReadCloser, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
 
@@ -76,7 +76,7 @@ func (s *AzureSnapshotter) Load() (io.ReadCloser, error) {
 	return body, nil
 }
 
-func (s *AzureSnapshotter) Save(r io.ReadCloser) error {
+func (s *azureSnapshotter) Save(r io.ReadCloser) error {
 	defer r.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer cancel()
@@ -106,19 +106,19 @@ func (s *AzureSnapshotter) Save(r io.ReadCloser) error {
 	return err
 }
 
-func (s *AzureSnapshotter) uploadFile(ctx context.Context, path string, file *os.File) (*http.Response, error) {
+func (s *azureSnapshotter) uploadFile(ctx context.Context, path string, file *os.File) (*http.Response, error) {
 	opts := azblob.HighLevelUploadToBlockBlobOption{}
 	client := s.container.NewBlockBlobClient(path)
 	return client.UploadFileToBlockBlob(ctx, file, opts)
 }
 
-func (s *AzureSnapshotter) uploadBytes(ctx context.Context, path string, p []byte) (*http.Response, error) {
+func (s *azureSnapshotter) uploadBytes(ctx context.Context, path string, p []byte) (*http.Response, error) {
 	opts := azblob.HighLevelUploadToBlockBlobOption{}
 	client := s.container.NewBlockBlobClient(path)
 	return client.UploadBufferToBlockBlob(ctx, p, opts)
 }
 
-func (s *AzureSnapshotter) updateLatest(ctx context.Context, path string, backedupAt time.Time) (*http.Response, error) {
+func (s *azureSnapshotter) updateLatest(ctx context.Context, path string, backedupAt time.Time) (*http.Response, error) {
 	latest := &LatestFile{
 		Path:      path,
 		Timestamp: backedupAt.Format("2006-01-02T15:04:05-0700"),
@@ -132,10 +132,10 @@ func (s *AzureSnapshotter) updateLatest(ctx context.Context, path string, backed
 	return s.uploadBytes(ctx, s.latestPath(), out)
 }
 
-func (s *AzureSnapshotter) latestPath() string {
+func (s *azureSnapshotter) latestPath() string {
 	return fmt.Sprintf("%s.%s", snapshotFilename, latestSuffix)
 }
 
-func (s *AzureSnapshotter) snapshotPath(backedupAt time.Time) string {
+func (s *azureSnapshotter) snapshotPath(backedupAt time.Time) string {
 	return fmt.Sprintf("%s.%d", snapshotFilename, backedupAt.Unix())
 }
