@@ -17,6 +17,8 @@ type azureSnapshotter struct {
 	container azblob.ContainerClient
 }
 
+// AzureConfig contains the configuration options for storing database
+// snapshots in Azure Storage accounts.
 type AzureConfig struct {
 	// AccountName is the Azure account name.
 	AccountName string
@@ -31,6 +33,8 @@ type AzureConfig struct {
 	ContainerName string
 }
 
+// NewAzureSnapshotter takes a pointer to AzureConfig and returns a type that
+// satifies the Snapshotter interface.
 func NewAzureSnapshotter(config *AzureConfig) (Snapshotter, error) {
 	cred, err := azblob.NewSharedKeyCredential(config.AccountName, config.AccountKey)
 	if err != nil {
