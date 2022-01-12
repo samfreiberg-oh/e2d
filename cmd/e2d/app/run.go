@@ -52,9 +52,10 @@ type runOptions struct {
 	AWSSecretKey       string `env:"E2D_AWS_SECRET_KEY"`
 	AWSRoleSessionName string `env:"E2D_AWS_ROLE_SESSION_NAME"`
 
+	AzureUseManagedID   bool          `env:"E2D_AZURE_USE_MANAGED_ID"`
+	AzureManagedID      string        `env:"E2D_AZURE_MANAGED_ID"`
 	AzureAccountName    string        `env:"E2D_AZURE_ACCOUNT_NAME"`
 	AzureAccountKey     string        `env:"E2D_AZURE_ACCOUNT_KEY"`
-	AzureStorageAccount string        `env:"E2D_AZURE_STORAGE_ACCOUNT"`
 	AzureStorageTimeout time.Duration `env:"E2D_AZURE_STORAGE_TIMEOUT"`
 	AzureStorageRetries int           `env:"E2D_AZURE_STORAGE_RETRIES"`
 
@@ -150,7 +151,13 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.PeerDiscovery, "peer-discovery", "", "which method {aws-autoscaling-group,ec2-tags,do-tags} to use to discover peers")
 
 	cmd.Flags().DurationVar(&o.SnapshotInterval, "snapshot-interval", 25*time.Minute, "frequency of etcd snapshots")
-	cmd.Flags().StringVar(&o.SnapshotBackupURL, "snapshot-url", "", "an absolute path to shared filesystem directory (like file:///tmp/etcd-backups/) or cloud storage bucket (like s3://etcd-backups/mycluster/) for snapshot backups. snapshots will be named etcd.snapshot.<timestamp>, and a file etcd.snapshot.LATEST will point to the most recent snapshot.")
+	cmd.Flags().StringVar(
+		&o.SnapshotBackupURL,
+		"snapshot-url",
+		"",
+		"an absolute path to shared filesystem directory (like file:///tmp/etcd-backups/) or cloud storage bucket (like s3://etcd-backups/mycluster/ or azure://<storageaccount>.blob.core.windows.net/<containername>) "+
+			"for snapshot backups. snapshots will be named etcd.snapshot.<timestamp>, and a file etcd.snapshot.LATEST will point to the most recent snapshot.",
+	)
 	cmd.Flags().BoolVar(&o.SnapshotCompression, "snapshot-compression", false, "compression snapshots with gzip")
 	cmd.Flags().BoolVar(&o.SnapshotEncryption, "snapshot-encryption", false, "encrypt snapshots with aes-256")
 	cmd.Flags().DurationVar(&o.SnapshotRetentionTime, "snapshot-retention-time", 24*time.Hour, "maximum age of a snapshot before it is deleted, set this to nonzero to enable retention support")
@@ -159,9 +166,10 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().StringVar(&o.AWSSecretKey, "aws-secret-key", "", "")
 	cmd.Flags().StringVar(&o.AWSRoleSessionName, "aws-role-session-name", "", "")
 
+	cmd.Flags().BoolVar(&o.AzureUseManagedID, "azure-use-managed-id", true, "use Azure managed identities")
+	cmd.Flags().StringVar(&o.AzureManagedID, "azure-managed-id", "", "specify a specific uuid if the system managed identity isn't sufficient")
 	cmd.Flags().StringVar(&o.AzureAccountName, "azure-account-name", "", "")
 	cmd.Flags().StringVar(&o.AzureAccountKey, "azure-account-key", "", "")
-	cmd.Flags().StringVar(&o.AzureStorageAccount, "azure-storage-account", "", "")
 	cmd.Flags().DurationVar(&o.AzureStorageTimeout, "azure-storage-timeout", 5*time.Minute, "")
 	cmd.Flags().IntVar(&o.AzureStorageRetries, "azure-storage-timeout", 3, "maximum number of times to retry upload/download from Azure storage")
 
@@ -270,11 +278,17 @@ func getSnapshotProvider(o *runOptions) (snapshot.Snapshotter, error) {
 			RetentionDays:   snapshotRetentionDays,
 		})
 	case snapshot.AzureType:
+		san, cn, err := snapshot.ParseAzureURL(o.SnapshotBackupURL)
+		if err != nil {
+			return nil, err
+		}
 		config := &snapshot.AzureConfig{
+			UseManagedID:   o.AzureUseManagedID,
+			ManagedID:      o.AzureManagedID,
 			AccountName:    o.AzureAccountName,
 			AccountKey:     o.AzureAccountName,
-			StorageAccount: o.AzureStorageAccount,
-			ContainerName:  u.Bucket,
+			StorageAccount: san,
+			ContainerName:  cn,
 			Timeout:        o.AzureStorageTimeout,
 			Retries:        o.AzureStorageRetries,
 		}

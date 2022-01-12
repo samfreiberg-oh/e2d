@@ -9,6 +9,36 @@ import (
 	"time"
 )
 
+func TestParseAzureURL(t *testing.T) {
+	tests := []struct {
+		have string
+		san  string // storage account name
+		cn   string // container name
+		err  error
+	}{
+		{"azure://mystorageaccount.blob.core.windows.net/my-container", "mystorageaccount.blob.core.windows.net", "my-container", nil},
+		{"azure:///my-container", "", "", AzureHostEmptyError},
+		{"http://example.com/my-container", "", "", AzureUnsupportedSchemeError},
+		{"azure://mystorageaccount.blob.core.windows.net/", "", "", AzurePathEmptyError},
+	}
+
+	for _, test := range tests {
+		san, cn, err := ParseAzureURL(test.have)
+		if san != test.san || cn != test.cn || err != test.err {
+			t.Fatalf(
+				"ParseAzureURL(%q) = %s, %s, %v; expected %s, %s, %v\n",
+				test.have,
+				san,
+				cn,
+				err,
+				test.san,
+				test.cn,
+				test.err,
+			)
+		}
+	}
+}
+
 // TestSnapshot is an end to end test that does the following:
 //   1. Uploads a "backup" including the pointer file that points to this as the latest.
 //   2. Download the "backup" and compare it to what was written. This also reads the latest file to get the latest file.
@@ -24,11 +54,17 @@ func TestSnapshot(t *testing.T) {
 		return val
 	}
 
+	rawURL := getOrFail(t, "E2D_SNAPSHOT_BACKUP_URL")
+	san, cn, err := ParseAzureURL(rawURL)
+	if err != nil {
+		t.Fatalf("unable to parse Azure URL %q: %s\n", rawURL, err)
+	}
+
 	c := &AzureConfig{
+		StorageAccount: san,
+		ContainerName:  cn,
 		AccountName:    getOrFail(t, "E2D_AZURE_ACCOUNT_NAME"),
 		AccountKey:     getOrFail(t, "E2D_AZURE_ACCOUNT_KEY"),
-		StorageAccount: getOrFail(t, "E2D_AZURE_STORAGE_ACCOUNT"),
-		ContainerName:  getOrFail(t, "E2D_AZURE_CONTAINER_NAME"),
 	}
 
 	snapshotter, err := NewAzureSnapshotter(c)

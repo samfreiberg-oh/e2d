@@ -6,10 +6,20 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+	"github.com/pkg/errors"
+)
+
+var (
+	AzureUnsupportedSchemeError = errors.New("unsupported scheme")
+	AzureHostEmptyError         = errors.New("host cannot be empty")
+	AzurePathEmptyError         = errors.New("path cannot be empty")
 )
 
 type azureSnapshotter struct {
@@ -20,6 +30,13 @@ type azureSnapshotter struct {
 // AzureConfig contains the configuration options for storing database
 // snapshots in Azure Storage accounts.
 type AzureConfig struct {
+	// UseManagedID will attempt to use Azure Managed Identities when set to true.
+	UseManagedID bool
+
+	// ManagedID allows a specific Managed Identity to be used rather than the system identity.
+	// When unset the system identity will be used.
+	ManagedID string
+
 	// AccountName is the Azure account name.
 	AccountName string
 
@@ -40,26 +57,79 @@ type AzureConfig struct {
 	Retries int
 }
 
+// ParseAzureURL takes an azure url and returns the storage account and container names.
+// The URL looks like:
+//   azure://<storageaccount>/<containername>
+// For example:
+//   azure://mystorageaccount.blob.core.windows.net/my-container
+func ParseAzureURL(rawURL string) (string, string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", "", err
+	}
+	if u.Scheme != "azure" {
+		return "", "", AzureUnsupportedSchemeError
+	}
+	if u.Host == "" {
+		return "", "", AzureHostEmptyError
+	}
+	if u.Path == "/" {
+		return "", "", AzurePathEmptyError
+	}
+
+	storageAcctName := u.Host
+	_, containerName := path.Split(u.Path)
+
+	return storageAcctName, containerName, nil
+}
+
 // NewAzureSnapshotter takes a pointer to AzureConfig and returns a type that
 // satifies the Snapshotter interface.
 func NewAzureSnapshotter(config *AzureConfig) (Snapshotter, error) {
-	cred, err := azblob.NewSharedKeyCredential(config.AccountName, config.AccountKey)
-	if err != nil {
-		return nil, err
-	}
-
-	url := fmt.Sprintf("https://%s.blob.core.windows.net/", config.StorageAccount)
-
-	client, err := azblob.NewServiceClientWithSharedKey(url, cred, nil)
+	client, err := newContainerClient(config)
 	if err != nil {
 		return nil, err
 	}
 
 	snapshotter := &azureSnapshotter{
 		config:    config,
-		container: client.NewContainerClient(config.ContainerName),
+		container: client,
 	}
 	return snapshotter, nil
+}
+
+func newContainerClient(config *AzureConfig) (azblob.ContainerClient, error) {
+	if config.UseManagedID {
+		return newContainerClientManagedIdentity(config)
+	}
+	return newContainerClientSharedKey(config)
+}
+
+func newContainerClientManagedIdentity(config *AzureConfig) (azblob.ContainerClient, error) {
+	ident, err := azidentity.NewManagedIdentityCredential(nil)
+	if err != nil {
+		return azblob.ContainerClient{}, err
+	}
+
+	url := fmt.Sprintf("https://%s/", config.StorageAccount)
+
+	return azblob.NewContainerClient(url, ident, nil)
+}
+
+func newContainerClientSharedKey(config *AzureConfig) (azblob.ContainerClient, error) {
+	cred, err := azblob.NewSharedKeyCredential(config.AccountName, config.AccountKey)
+	if err != nil {
+		return azblob.ContainerClient{}, err
+	}
+
+	url := fmt.Sprintf("https://%s/", config.StorageAccount)
+
+	client, err := azblob.NewServiceClientWithSharedKey(url, cred, nil)
+	if err != nil {
+		return azblob.ContainerClient{}, err
+	}
+
+	return client.NewContainerClient(config.ContainerName), nil
 }
 
 func (s *azureSnapshotter) Load() (io.ReadCloser, error) {
